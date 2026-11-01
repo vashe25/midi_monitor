@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>MIDI Control Panel</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    background: #181825;
+    padding: 12px 16px;
+    border-bottom: 1px solid #313244;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    margin: 0 16px 0 0;
+    font-size: 16px;
+    color: #cba6f7;
+  }
+  select, button, input {
+    background: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { background: #45475a; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
+  button.primary:hover:not(:disabled) { background: #b4befe; }
+  button.danger { background: #f38ba8; color: #1e1e2e; border-color: #f38ba8; }
+  button.danger:hover:not(:disabled) { background: #eba0ac; }
+  .status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #313244;
+    font-size: 12px;
+    margin-left: auto;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #6c7086;
+  }
+  .dot.connected { background: #a6e3a1; box-shadow: 0 0 8px #a6e3a1; }
+  .dot.error { background: #f38ba8; }
+
+  main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 1px;
+    background: #313244;
+    overflow: hidden;
+  }
+
+  /* Control Panel */
+  .controls-panel {
+    background: #1e1e2e;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .controls-panel,
+  .monitor-panel {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .controls-panel h2, .monitor-panel h2 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #cba6f7;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .control-card {
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+  .control-card label.title {
+    display: block;
+    font-size: 12px;
+    color: #a6adc8;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    padding: 0;
+    border: none;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 6px;
+    background: #45475a;
+    border-radius: 3px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px; height: 18px;
+    background: #89b4fa;
+    border-radius: 50%;
+    margin-top: -6px;
+    cursor: pointer;
+  }
+  .value-badge {
+    background: #313244;
+    color: #89b4fa;
+    font-family: monospace;
+    padding: 4px 10px;
+    border-radius: 6px;
+    min-width: 50px;
+    text-align: center;
+    font-weight: bold;
+  }
+  .button-control {
+    width: 100%;
+    padding: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    background: #313244;
+    color: #cdd6f4;
+    border: 2px solid #45475a;
+    border-radius: 8px;
+    user-select: none;
+    transition: all 0.05s;
+  }
+  .button-control:active, .button-control.pressed {
+    background: #89b4fa;
+    color: #1e1e2e;
+    border-color: #89b4fa;
+  }
+  textarea {
+    width: 100%;
+    min-height: 70px;
+    background: #11111b;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 13px;
+    resize: vertical;
+  }
+  .cc-config {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #313244;
+    font-size: 12px;
+    color: #a6adc8;
+  }
+  .cc-config input {
+    width: 70px;
+    font-family: monospace;
+  }
+
+  /* Monitor */
+  .monitor-panel {
+    background: #1e1e2e;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  .monitor-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .monitor-toolbar .auto-scroll {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #a6adc8;
+  }
+  .log-container {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    background: #11111b;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+  }
+  .log-entry {
+    display: grid;
+    grid-template-columns: 90px 55px 90px 40px 55px 55px;
+    gap: 8px;
+    padding: 4px 10px;
+    border-bottom: 1px solid #181825;
+  }
+  .log-entry:hover { background: #181825; }
+  .log-header {
+    position: sticky;
+    top: 0;
+    background: #181825;
+    color: #6c7086;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    z-index: 1;
+  }
+  .dir-IN { color: #a6e3a1; }
+  .dir-OUT { color: #f9e2af; }
+  .empty-log {
+    padding: 30px;
+    text-align: center;
+    color: #6c7086;
+    font-style: italic;
+  }
+  .err-banner {
+    background: #f38ba8;
+    color: #1e1e2e;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🎹 MIDI Control Panel</h1>
+
+    <label>
+      MIDI In:
+      <select v-model="selectedInput" @change="onSelectInput" :disabled="!midiAccess">
+        <option value="">— none —</option>
+        <option v-for="(inp, i) in inputs" :key="i" :value="inp.id">{{ inp.name }}</option>
+      </select>
+    </label>
+
+    <label>
+      MIDI Out:
+      <select v-model="selectedOutput" @change="onSelectOutput" :disabled="!midiAccess">
+        <option value="">— none —</option>
+        <option v-for="(out, i) in outputs" :key="i" :value="out.id">{{ out.name }}</option>
+      </select>
+    </label>
+
+    <button class="primary" @click="connect" :disabled="!midiAccess || (connected && !selectedInput && !selectedOutput)">
+      Connect
+    </button>
+    <button class="danger" @click="disconnect" :disabled="!connected">Disconnect</button>
+
+    <span class="status-indicator">
+      <span class="dot" :class="{ connected: connected, error: midiError }"></span>
+      {{ statusText }}
+    </span>
+  </header>
+
+  <div v-if="midiError" class="err-banner">{{ midiError }}</div>
+
+  <main>
+    <!-- CONTROL PANEL -->
+    <section class="controls-panel">
+      <h2>Control Panel</h2>
+
+      <!-- Slider -->
+      <div class="control-card">
+        <label class="title">Slider</label>
+        <div class="slider-row">
+          <input type="range" min="0" max="127" v-model.number="slider.value"
+                 @input="onSliderInput" />
+          <span class="value-badge">{{ slider.value }}</span>
+        </div>
+        <div class="cc-config">
+          CC Number:
+          <input type="number" min="0" max="127" v-model.number="slider.cc" @change="clampCC('slider')" />
+          <span style="color:#6c7086">(channel {{ channel + 1 }})</span>
+        </div>
+      </div>
+
+      <!-- Button -->
+      <div class="control-card">
+        <label class="title">Button</label>
+        <button class="button-control"
+                :class="{ pressed: button.pressed }"
+                @mousedown="buttonDown"
+                @mouseup="buttonUp"
+                @mouseleave="buttonUp"
+                @touchstart.prevent="buttonDown"
+                @touchend.prevent="buttonUp">
+          {{ button.pressed ? 'PRESSED (127)' : 'PRESS' }}
+        </button>
+        <div class="cc-config">
+          CC Number:
+          <input type="number" min="0" max="127" v-model.number="button.cc" @change="clampCC('button')" />
+          <span style="color:#6c7086">(channel {{ channel + 1 }})</span>
+        </div>
+      </div>
+
+      <!-- Text Display -->
+      <div class="control-card">
+        <label class="title">Text Display (max 127 chars)</label>
+        <textarea v-model="text.value"
+                  maxlength="127"
+                  @input="onTextInput"
+                  placeholder="Type text to send..."></textarea>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+          <span style="font-size:12px; color:#6c7086;">{{ text.value.length }} / 127</span>
+          <button @click="sendTextNow">Send now</button>
+        </div>
+
+        <div class="cc-config">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="radio" v-model="text.mode" value="cc" />
+            CC Stream
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="radio" v-model="text.mode" value="sysex" />
+            SysEx (Unicode)
+          </label>
+          <span v-if="text.mode === 'cc'" style="color:#6c7086">
+            CC Number: <input type="number" min="0" max="127" v-model.number="text.cc" @change="clampCC('text')" style="width:60px;" />
+          </span>
+          <span v-else style="color:#6c7086; font-size:11px;">
+            UTF-8 → SysEx (F0 7D … F7)
+          </span>
+        </div>
+      </div>
+
+      <div class="control-card">
+        <label class="title">MIDI Channel (for outgoing)</label>
+        <div class="slider-row">
+          <input type="range" min="0" max="15" v-model.number="channel" />
+          <span class="value-badge">{{ channel + 1 }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- MIDI MONITOR -->
+    <section class="monitor-panel">
+      <h2>MIDI Monitor</h2>
+      <div class="monitor-toolbar">
+        <button @click="clearLog">Clear log</button>
+        <span style="font-size:12px; color:#6c7086;">{{ log.length }} events</span>
+        <label class="auto-scroll">
+          <input type="checkbox" v-model="autoScroll" /> auto-scroll
+        </label>
+      </div>
+      <div class="log-container" ref="logBox">
+        <div class="log-entry log-header">
+          <span>Time</span><span>Dir</span><span>Type</span><span>Ch</span><span>Ctrl</span><span>Val</span>
+        </div>
+        <div v-if="log.length === 0" class="empty-log">No MIDI events yet…</div>
+        <div v-for="(e, i) in log" :key="i" class="log-entry">
+          <span>{{ e.time }}</span>
+          <span :class="'dir-' + e.dir">{{ e.dir }}</span>
+          <span>{{ e.type }}</span>
+          <span>{{ e.channel !== null ? (e.channel + 1) : '-' }}</span>
+          <span>{{ e.controller !== null ? e.controller : '-' }}</span>
+          <span>{{ e.value !== null ? e.value : '-' }}</span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const { createApp, reactive, ref, computed, onMounted, nextTick } = Vue;
+
+createApp({
+  setup() {
+    // --- State ---
+    const midiAccess = ref(null);
+    const midiError = ref('');
+    const inputs = ref([]);
+    const outputs = ref([]);
+    const selectedInput = ref('');
+    const selectedOutput = ref('');
+    const connected = ref(false);
+    const channel = ref(0);
+
+    const slider = reactive({ value: 64, cc: 1, lastSent: null });
+    const button = reactive({ pressed: false, cc: 2 });
+    const text = reactive({ value: '', cc: 20, mode: 'cc' }); // 'cc' | 'sysex'
+
+    const log = ref([]);
+    const autoScroll = ref(true);
+    const logBox = ref(null);
+
+    let activeInput = null;
+    let activeOutput = null;
+
+    // --- Helpers ---
+    const statusText = computed(() => {
+      if (midiError.value) return 'Error';
+      if (!midiAccess.value) return 'MIDI not available';
+      if (connected.value) return 'Connected';
+      return 'Disconnected';
+    });
+
+    function clampCC(name) {
+      const ctl = { slider, button, text }[name];
+      let v = parseInt(ctl.cc);
+      if (isNaN(v)) v = 0;
+      v = Math.max(0, Math.min(127, v));
+      ctl.cc = v;
+    }
+
+    function logEvent(dir, type, channel, controller, value) {
+      const now = new Date();
+      const time = now.toTimeString().slice(0, 8) + '.' +
+                   String(now.getMilliseconds()).padStart(3, '0');
+      log.value.push({ time, dir, type, channel, controller, value });
+      if (log.value.length > 1000) log.value.shift();
+      if (autoScroll.value) {
+        nextTick(() => {
+          if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight;
+        });
+      }
+    }
+
+    function clearLog() { log.value = []; }
+
+    // --- MIDI send ---
+    function sendCC(cc, value) {
+      if (!activeOutput) return;
+      const ch = channel.value;
+      activeOutput.send([0xB0 | ch, cc & 0x7F, value & 0x7F]);
+      logEvent('OUT', 'CC', ch, cc, value);
+    }
+
+    // --- Slider ---
+    function onSliderInput() {
+      // throttle-ish: just send
+      sendCC(slider.cc, slider.value);
+    }
+
+    // --- Button ---
+    function buttonDown() {
+      if (button.pressed) return;
+      button.pressed = true;
+      sendCC(button.cc, 127);
+    }
+    function buttonUp() {
+      if (!button.pressed) return;
+      button.pressed = false;
+      sendCC(button.cc, 0);
+    }
+
+    // --- Text via CC stream ---
+    function onTextInput() {
+      // отправляем автоматически при вводе (можно отключить)
+      sendTextNow();
+    }
+    function sendTextNow() {
+      if (!activeOutput) return;
+
+      if (text.mode === 'sysex') {
+        sendTextSysEx();
+      } else {
+        sendTextViaCC();
+      }
+    }
+    function sendTextViaCC() {
+      const str = text.value.slice(0, 127);
+      const cc = text.cc;
+      for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i);
+        const byte = code > 127 ? (code & 0x7F) : code;
+        sendCC(cc, byte);
+      }
+      sendCC(cc, 0); // End-of-text
+    }
+
+    function sendTextSysEx() {
+      if (!activeOutput) return;
+
+      // UTF-8 кодирование строки
+      const encoder = new TextEncoder();
+      const utf8Bytes = encoder.encode(text.value); // Uint8Array
+
+      // SysEx: F0 7D <data...> F7
+      // 0x7D = Non-commercial / educational manufacturer ID
+      const sysex = [0xF0, 0x7D, ...utf8Bytes, 0xF7];
+
+      // Web MIDI API: значения должны быть 0-255
+      activeOutput.send(sysex);
+
+      // Логируем (сокращённо, без всех байтов)
+      logEvent('OUT', 'SysEx', null, null, `${utf8Bytes.length} bytes`);
+    }
+
+    // --- Incoming MIDI ---
+    function onMIDIMessage(e) {
+      const data = e.data;
+      if (!data || data.length < 1) return;
+      const status = data[0];
+      const type = status & 0xF0;
+      const ch = status & 0x0F;
+      const d1 = data[1] ?? null;
+      const d2 = data[2] ?? null;
+
+      let typeName = 'Unknown';
+      let ctrl = null, val = null;
+
+      switch (type) {
+        case 0xB0:
+          typeName = 'CC';
+          ctrl = d1; val = d2;
+          // Reflect incoming CC on controls
+          if (ctrl === slider.cc) slider.value = val;
+          if (ctrl === button.cc) button.pressed = (val > 0);
+          if (ctrl === text.cc) { /* текстовые стримы обычно не отражаем */ }
+          break;
+        case 0x90:
+          typeName = d2 > 0 ? 'Note On' : 'Note Off';
+          ctrl = d1; val = d2;
+          break;
+        case 0x80:
+          typeName = 'Note Off';
+          ctrl = d1; val = d2;
+          break;
+        case 0xE0:
+          typeName = 'Pitch Bend';
+          ctrl = d1; val = d2;
+          break;
+        case 0xA0:
+          typeName = 'Poly AT';
+          ctrl = d1; val = d2;
+          break;
+        case 0xD0:
+          typeName = 'Channel AT';
+          ctrl = null; val = d1;
+          break;
+        case 0xC0:
+          typeName = 'Program Change';
+          ctrl = null; val = d1;
+          break;
+        case 0xF0:
+          typeName = 'SysEx';
+          ctrl = null; val = `${data.length - 2} bytes`;
+        default:
+          typeName = 'Status ' + status.toString(16);
+      }
+
+      logEvent('IN', typeName, ch, ctrl, val);
+    }
+
+    // --- Device management ---
+    function refreshDevices() {
+      if (!midiAccess.value) return;
+      inputs.value = Array.from(midiAccess.value.inputs.values()).map(i => ({ id: i.id, name: i.name || i.id }));
+      outputs.value = Array.from(midiAccess.value.outputs.values()).map(o => ({ id: o.id, name: o.name || o.id }));
+
+      // auto-select first if none selected
+      if (!selectedInput.value && inputs.value.length) selectedInput.value = inputs.value[0].id;
+      if (!selectedOutput.value && outputs.value.length) selectedOutput.value = outputs.value[0].id;
+    }
+
+    function attachInput() {
+      if (activeInput) { activeInput.onmidimessage = null; activeInput = null; }
+      if (!selectedInput.value || !midiAccess.value) return;
+      const inp = midiAccess.value.inputs.get(selectedInput.value);
+      if (inp) {
+        activeInput = inp;
+        activeInput.onmidimessage = onMIDIMessage;
+      }
+    }
+
+    function attachOutput() {
+      if (!selectedOutput.value || !midiAccess.value) return;
+      activeOutput = midiAccess.value.outputs.get(selectedOutput.value) || null;
+    }
+
+    function onSelectInput() {
+      if (connected.value) attachInput();
+    }
+    function onSelectOutput() {
+      if (connected.value) attachOutput();
+    }
+
+    async function connect() {
+      attachInput();
+      attachOutput();
+      connected.value = !!(activeInput || activeOutput);
+      if (activeInput) logEvent('IN', '— connect —', null, null, null);
+    }
+
+    function disconnect() {
+      if (activeInput) { activeInput.onmidimessage = null; }
+      activeInput = null;
+      activeOutput = null;
+      connected.value = false;
+      // сброс визуального состояния кнопки
+      button.pressed = false;
+    }
+
+    // --- Init ---
+    onMounted(async () => {
+      if (!navigator.requestMIDIAccess) {
+        midiError.value = 'Web MIDI API не поддерживается этим браузером. Используйте Chrome / Edge на localhost или HTTPS.';
+        return;
+      }
+      try {
+        const access = await navigator.requestMIDIAccess({ sysex: true });
+        midiAccess.value = access;
+        refreshDevices();
+
+        access.onstatechange = (e) => {
+          refreshDevices();
+          // если отключили активное устройство
+          if (connected.value) {
+            if (activeInput && !access.inputs.get(activeInput.id)) {
+              activeInput = null;
+            }
+            if (activeOutput && !access.outputs.get(activeOutput.id)) {
+              activeOutput = null;
+            }
+            if (!activeInput && !activeOutput) connected.value = false;
+            else attachInput(), attachOutput();
+          }
+        };
+      } catch (err) {
+        if (err.name === 'SecurityError' || err.message.includes('sysex')) {
+          midiError.value = 'Доступ к SysEx отклонён. Разрешите MIDI в настройках сайта.';
+        } else {
+          midiError.value = 'Ошибка доступа к MIDI: ' + err.message;
+        }
+      }
+    });
+
+    return {
+      // state
+      midiAccess, midiError, inputs, outputs, selectedInput, selectedOutput,
+      connected, channel, slider, button, text, log, autoScroll, logBox,
+      statusText,
+      // actions
+      connect, disconnect, clearLog,
+      onSelectInput, onSelectOutput,
+      onSliderInput, buttonDown, buttonUp,
+      onTextInput, sendTextNow, clampCC
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
